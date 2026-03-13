@@ -2,85 +2,150 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Training Simulator</title>
+    <!-- Supabase CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root { --bg-color: #f0f2f5; --white: #ffffff; --primary-blue: #0d6efd; --danger-red: #dc3545; --success-green: #198754; --instr-bg: #e7f1ff; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: system-ui, Arial; background-color: var(--bg-color); padding-bottom: 100px; }
-        
-        /* Picker Screen Overlay */
-        #picker-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); z-index: 5000; display: flex; align-items: center; justify-content: center; }
-        .picker-card { background: white; padding: 30px; border-radius: 8px; width: 450px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .scen-item { border: 1px solid #ddd; padding: 15px; margin-top: 10px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
-        .scen-item:hover { border-color: var(--primary-blue); background: #f9f9f9; }
-        
-        /* Main UI Layout */
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        .card { background: white; padding: 20px; border-radius: 4px; border: 1px solid #dee2e6; margin-bottom: 20px; }
-        .btn { padding: 8px 14px; border-radius: 4px; border: 1px solid #ddd; cursor: pointer; font-weight: 500; }
-        .btn-blue { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
-        .badge-green { background: #d1e7dd; color: var(--success-green); }
-        .badge-red { background: #f8d7da; color: var(--danger-red); }
-        
-        /* Instructions and Modals */
-        .instruction-panel { position: fixed; bottom: 0; width: 100%; background: var(--instr-bg); border-top: 3px solid var(--primary-blue); padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; z-index: 3000; }
-        .active-target { outline: 3px solid var(--primary-blue) !important; box-shadow: 0 0 10px rgba(13,110,253,0.5); }
-        #flash-overlay { position: fixed; top: 0; width: 100%; height: 100%; background: rgba(220,53,69,0.2); display: none; pointer-events: none; z-index: 9999; }
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 4000; }
-        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 400px; }
-        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
+        :root {
+            --bg-color: #f0f2f5;
+            --white: #ffffff;
+            --primary-blue: #0d6efd;
+            --danger-red: #dc3545;
+            --warning-orange: #fd7e14;
+            --success-green: #198754;
+            --border-color: #dee2e6;
+            --text-muted: #6c757d;
+            --instr-bg: #e7f1ff;
+        }
 
-        .status-error { color: var(--danger-red); font-size: 12px; margin-top: 10px; font-weight: bold; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, Arial, sans-serif; background-color: var(--bg-color); color: #212529; padding-bottom: 100px; }
+
+        /* Picker Screen */
+        #picker-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); z-index: 5000; display: flex; align-items: center; justify-content: center; }
+        .picker-container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 500px; max-height: 80vh; overflow-y: auto; }
+        .scen-card { border: 1px solid var(--border-color); padding: 15px; border-radius: 6px; margin-top: 12px; cursor: pointer; transition: 0.2s; }
+        .scen-card:hover { border-color: var(--primary-blue); background: #f8f9fa; }
+        .status-msg { padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 13px; font-weight: bold; }
+
+        /* Main UI */
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .card { background: var(--white); border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border-color); margin-bottom: 20px; padding: 20px; }
+        .flex { display: flex; gap: 20px; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+
+        /* Navigation */
+        .top-bar { padding: 15px 20px; border-bottom: 1px solid var(--border-color); background: var(--white); position: sticky; top: 0; z-index: 100; }
+        .breadcrumb { font-size: 18px; font-weight: 500; }
+
+        /* Badges & Buttons */
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: inline-block; }
+        .badge-green { background-color: #d1e7dd; color: var(--success-green); }
+        .badge-red { background-color: #f8d7da; color: var(--danger-red); }
+        .btn { padding: 8px 14px; border-radius: 4px; border: 1px solid var(--border-color); cursor: pointer; font-size: 13px; font-weight: 500; }
+        .btn-blue { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
+        .btn-sm { padding: 4px 8px; font-size: 11px; }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        th { text-align: left; padding: 10px; border-bottom: 2px solid var(--border-color); color: var(--text-muted); }
+        td { padding: 12px 10px; border-bottom: 1px solid var(--border-color); }
+
+        /* Instruction Panel (Fixed Bottom) */
+        .instruction-panel {
+            position: fixed; bottom: 0; left: 0; width: 100%; background: var(--instr-bg);
+            border-top: 3px solid var(--primary-blue); padding: 20px 40px;
+            display: flex; justify-content: space-between; align-items: center; z-index: 3000;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.1);
+        }
+
+        /* Modals */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 4000; }
+        .modal-content { background: white; padding: 30px; border-radius: 8px; width: 500px; }
+        label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; margin-top: 10px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; font-family: inherit; }
+
+        /* Feedback Effects */
+        .active-target { outline: 4px solid var(--primary-blue) !important; box-shadow: 0 0 20px rgba(13,110,253,0.6) !important; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 50% { transform: translateX(10px); } 75% { transform: translateX(-10px); } }
+        .shake { animation: shake 0.3s; border: 2px solid var(--danger-red) !important; }
+        #flash-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(220,53,69,0.3); z-index: 9999; display:none; pointer-events: none; }
     </style>
 </head>
 <body>
+
     <div id="flash-overlay"></div>
 
-    <!-- PICKER SCREEN -->
+    <!-- 1. PICKER SCREEN (START SCREEN) -->
     <div id="picker-screen">
-        <div class="picker-card">
-            <h2 style="margin-bottom:10px;">Select Scenario</h2>
-            <div id="db-status"></div>
-            <label style="font-size:12px; font-weight:bold; color:#666;">AGENT NAME</label>
-            <input type="text" id="agent-name" placeholder="Enter your name first...">
-            <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
-            <div id="scenarios-list">
-                <p style="color:#666">Connecting to database...</p>
+        <div class="picker-container">
+            <h2 style="margin-bottom:15px">Training Portal</h2>
+            <div id="conn-status" class="status-msg" style="background:#eee">Checking connection...</div>
+            
+            <div style="margin-bottom:20px">
+                <label>AGENT NAME</label>
+                <input type="text" id="agent-name-input" placeholder="Enter your name to unlock scenarios...">
+            </div>
+
+            <h3 style="font-size:16px; border-bottom:1px solid #eee; padding-bottom:10px">Select Scenario</h3>
+            <div id="scenarios-list" style="margin-top:10px">
+                <p style="color:gray italic">Waiting for connection...</p>
             </div>
         </div>
     </div>
 
-    <!-- MAIN UI -->
+    <!-- 2. MAIN SIMULATOR UI -->
     <div id="main-ui" style="display:none">
-        <header class="card" style="display:flex; justify-content:space-between; align-items:center; border-radius:0;">
-            <div><strong>Booking #20025961</strong> <span class="badge badge-green">Ticketed</span></div>
+        <header class="top-bar flex-between">
             <div>
-                <button class="btn btn-blue" id="charge-voice-btn">Charge and Voice</button> 
+                <span class="breadcrumb">Booking #20025961 / Train Segment</span>
+                <span class="badge badge-green">Ticketed</span>
+            </div>
+            <div class="flex">
+                <button class="btn btn-blue" id="charge-voice-btn">Charge and Voice</button>
                 <button class="btn" id="send-confirmation-btn">Re-send Confirmation</button>
             </div>
         </header>
+
         <div class="container">
-            <div style="display:flex; gap:20px">
-                <div class="card" style="flex:1">
-                    <label style="font-size:12px; font-weight:bold">External Reference</label>
-                    <input type="text" id="external-ref-input">
-                    <label style="font-size:12px; font-weight:bold">Attachment</label>
+            <div class="flex">
+                <!-- Left Details -->
+                <div class="card" style="flex: 1.5;">
+                    <label>External Reference</label>
+                    <input type="text" id="external-ref-input" placeholder="e.g. REF-1002">
+                    
+                    <label>Confirmation Attachment</label>
                     <input type="file" id="pdf-upload-input">
-                    <button class="btn btn-blue" style="width:100%" id="save-details-btn">Save Details</button>
+                    
+                    <button class="btn btn-blue" id="save-details-btn" style="width: 100%; margin-top:20px;">Save Details</button>
                 </div>
-                <div class="card" style="flex:1">
-                    <div style="display:flex; justify-content:space-between"><span>Payment</span><span class="badge badge-green sale-badge" id="payment-badge">Unlocked</span></div>
-                    <button class="btn btn-sm btn-blue" style="margin-top:10px" onclick="document.getElementById('modal-edit-payment').style.display='flex'">Update Payment</button>
+
+                <!-- Right Payment -->
+                <div class="card" style="flex: 1;">
+                    <div class="flex-between">
+                        <label style="margin:0">Payment Status</label>
+                        <span class="badge badge-green" id="payment-badge">Unlocked</span>
+                    </div>
+                    <p style="font-size:13px; margin-top:10px">Customer Balance: 0.00 EUR</p>
+                    <button class="btn btn-sm btn-blue" style="width:100%; margin-top:15px" onclick="document.getElementById('modal-edit-payment').style.display='flex'">Update Payment</button>
                 </div>
             </div>
+
+            <!-- Itinerary Table -->
             <div class="card">
-                <h3>Itinerary</h3>
+                <h3>Itinerary Segment</h3>
                 <table>
-                    <thead><tr><th style="text-align:left">Route</th><th style="text-align:left">Actions</th></tr></thead>
+                    <thead>
+                        <tr><th>Segment</th><th>PNR</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
                     <tbody>
-                        <tr><td>Essen (ESS) → Paris (CDG)</td><td><button class="btn btn-sm btn-blue" onclick="document.getElementById('modal-edit-segment').style.display='flex'">Edit Segment</button></td></tr>
+                        <tr>
+                            <td>Essen (ESS) → Paris (CDG)</td>
+                            <td><strong id="pnr-display">ABC123</strong></td>
+                            <td><span class="badge badge-green">Confirmed</span></td>
+                            <td><button class="btn btn-blue btn-sm" onclick="document.getElementById('modal-edit-segment').style.display='flex'">Edit Segment</button></td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -90,27 +155,29 @@
     <!-- MODALS -->
     <div class="modal-overlay" id="modal-edit-segment">
         <div class="modal-content">
-            <h3>Edit Segment</h3>
+            <h3>Edit Segment Details</h3>
             <label>Fare Name</label><input type="text" id="fare-name-input">
-            <label>PNR</label><input type="text" id="pnr-input">
-            <button class="btn btn-blue" id="save-segment-btn">Save</button>
-            <button class="btn" onclick="this.closest('.modal-overlay').style.display='none'">Cancel</button>
+            <label>PNR Code</label><input type="text" id="pnr-input">
+            <div class="flex-between" style="margin-top:25px">
+                <button class="btn btn-blue" id="save-segment-btn">Apply Changes</button>
+                <button class="btn" onclick="this.closest('.modal-overlay').style.display='none'">Cancel</button>
+            </div>
         </div>
     </div>
 
     <div class="modal-overlay" id="modal-edit-payment">
         <div class="modal-content">
-            <h3>Update Payment</h3>
-            <label><input type="checkbox" id="check-item" style="width:auto"> Confirm Payment Received</label>
-            <button class="btn btn-blue" style="width:100%; margin-top:10px;" id="update-payment-btn">Update</button>
-            <button class="btn" style="width:100%; margin-top:5px;" onclick="this.closest('.modal-overlay').style.display='none'">Cancel</button>
+            <h3>Payment Confirmation</h3>
+            <p style="font-size:13px; color:gray; margin-bottom:15px">Verify that the bank transfer has arrived.</p>
+            <label><input type="checkbox" id="check-item" style="width:auto"> Payment received for Ticket Item</label>
+            <button class="btn btn-blue" id="update-payment-btn" style="width:100%; margin-top:20px;">Confirm & Update</button>
         </div>
     </div>
 
-    <!-- INSTRUCTION PANEL -->
+    <!-- BOTTOM INSTRUCTION PANEL -->
     <div class="instruction-panel">
-        <div>Current Task: <strong id="instruction-text">Please select a scenario.</strong></div>
-        <button class="btn btn-sm" style="background:white" id="hint-btn">Hint</button>
+        <div>Current Task: <strong id="instruction-text">Initializing...</strong></div>
+        <button class="btn btn-sm" style="background:white" id="hint-btn">Get Hint</button>
     </div>
 
     <script>
@@ -121,132 +188,138 @@
         const { createClient } = supabase;
         const _client = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // --- 2. TRAINER STATE ---
+        // --- 2. TRAINER ENGINE ---
         const trainer = {
-            steps: [], 
-            index: 0, 
-            mistakes: 0, 
-            sessionId: null,
+            steps: [], index: 0, mistakes: 0, sessionId: null,
 
-            async load(id) {
-                const name = document.getElementById('agent-name').value;
-                if (!name) { alert("Please enter your Agent Name first!"); return; }
+            async loadScenario(id) {
+                const name = document.getElementById('agent-name-input').value;
+                if (!name) return alert("Please enter your Agent Name first.");
 
                 try {
-                    const { data: steps, error: stepError } = await _client.from('scenario_steps').select('*').eq('scenario_id', id).order('step_order', {ascending:true});
-                    if (stepError) throw stepError;
+                    // Fetch Steps
+                    const { data: steps, error: stepErr } = await _client.from('scenario_steps').select('*').eq('scenario_id', id).order('step_order', {ascending:true});
+                    if (stepErr) throw stepErr;
+                    if (!steps || steps.length === 0) return alert("This scenario has no steps defined.");
 
-                    const { data: sess, error: sessError } = await _client.from('scenario_sessions').insert([{ scenario_id: id, agent_name: name }]).select().single();
-                    if (sessError) throw sessError;
+                    // Start Session
+                    const { data: sess, error: sessErr } = await _client.from('scenario_sessions').insert([{ scenario_id: id, agent_name: name }]).select().single();
+                    if (sessErr) throw sessErr;
 
-                    this.steps = steps; 
+                    this.steps = steps;
                     this.sessionId = sess.id;
                     this.index = 0;
                     this.mistakes = 0;
 
                     document.getElementById('picker-screen').style.display = 'none';
                     document.getElementById('main-ui').style.display = 'block';
-                    this.show();
+                    this.showStep();
                 } catch (err) {
-                    alert("Error starting scenario: " + err.message);
+                    alert("Logic Error: " + err.message);
                 }
             },
 
-            show() {
+            showStep() {
                 const step = this.steps[this.index];
                 document.getElementById('instruction-text').innerText = step.instruction;
-                
-                // Disable everything
-                document.querySelectorAll('button, input').forEach(el => { 
-                    el.style.pointerEvents = 'none'; 
-                    el.style.opacity = '0.4'; 
-                    el.classList.remove('active-target'); 
+
+                // Disable UI
+                document.querySelectorAll('button, input, select').forEach(el => {
+                    el.style.pointerEvents = 'none'; el.style.opacity = '0.3'; el.classList.remove('active-target');
                 });
-                
+
+                // Map target element
                 let target;
-                if(step.step_type === 'fill_external_reference') target = document.getElementById('external-ref-input');
-                if(step.step_type === 'attach_pdf') target = document.getElementById('pdf-upload-input');
-                if(step.step_type === 'click_save_details') target = document.getElementById('save-details-btn');
-                if(step.step_type === 'edit_fare_name') target = document.getElementById('fare-name-input');
-                if(step.step_type === 'edit_pnr') target = document.getElementById('pnr-input');
-                if(step.step_type === 'click_update_payment') target = document.getElementById('update-payment-btn');
-                if(step.step_type === 'click_charge_and_voice') target = document.getElementById('charge-voice-btn');
+                switch(step.step_type) {
+                    case 'fill_external_reference': target = document.getElementById('external-ref-input'); break;
+                    case 'attach_pdf': target = document.getElementById('pdf-upload-input'); break;
+                    case 'click_save_details': target = document.getElementById('save-details-btn'); break;
+                    case 'edit_fare_name': target = document.getElementById('fare-name-input'); break;
+                    case 'edit_pnr': target = document.getElementById('pnr-input'); break;
+                    case 'click_update_payment': target = document.getElementById('update-payment-btn'); break;
+                    case 'click_charge_and_voice': target = document.getElementById('charge-voice-btn'); break;
+                }
 
-                if(target) {
-                    target.style.pointerEvents = 'auto'; 
-                    target.style.opacity = '1'; 
-                    target.classList.add('active-target');
-
-                    // Specific Logic
-                    if(target.id === 'charge-voice-btn') {
+                if (target) {
+                    target.style.pointerEvents = 'auto'; target.style.opacity = '1'; target.classList.add('active-target');
+                    
+                    // Logic for modals
+                    if (target.id === 'fare-name-input' || target.id === 'pnr-input') {
+                        document.getElementById('save-segment-btn').style.pointerEvents = 'auto';
+                        document.getElementById('save-segment-btn').style.opacity = '1';
+                        document.getElementById('save-segment-btn').onclick = () => this.validate(target.value);
+                    } else if (target.id === 'update-payment-btn') {
+                        target.onclick = () => this.validate(document.getElementById('check-item').checked ? 'paid' : '');
+                    } else if (target.id === 'charge-voice-btn') {
                         target.onclick = () => {
-                            const b = document.getElementById('payment-badge');
-                            b.className='badge badge-red'; b.innerText='Locked';
+                            document.getElementById('payment-badge').className='badge badge-red';
+                            document.getElementById('payment-badge').innerText='Locked';
                             this.validate('click');
                         };
-                    } else if(target.id === 'update-payment-btn') {
-                        target.onclick = () => this.validate(document.getElementById('check-item').checked ? 'paid' : '');
-                    } else if(target.id === 'fare-name-input' || target.id === 'pnr-input') {
-                        const saveBtn = document.getElementById('save-segment-btn');
-                        saveBtn.style.pointerEvents='auto'; saveBtn.style.opacity='1';
-                        saveBtn.onclick = () => this.validate(target.value);
                     } else {
-                        target.onchange = target.onclick = () => this.validate(target.value);
+                        target.onchange = target.onclick = () => this.validate(target.value || "clicked");
                     }
                 }
             },
 
-            validate(val) {
+            validate(value) {
                 const expected = this.steps[this.index].expected_value;
-                const type = this.steps[this.index].step_type;
+                const isCorrect = this.steps[this.index].step_type.startsWith('click') || (value && value.toString().toLowerCase() === expected.toLowerCase());
 
-                const isCorrect = type.startsWith('click') || (val && val.toString().toLowerCase() === expected.toLowerCase());
-
-                if(isCorrect) {
+                if (isCorrect) {
                     this.index++;
                     document.querySelectorAll('.modal-overlay').forEach(m => m.style.display='none');
-                    if(this.index < this.steps.length) this.show(); 
-                    else this.finish();
+                    if (this.index < this.steps.length) this.showStep(); 
+                    else this.complete();
                 } else {
                     this.mistakes++;
                     document.getElementById('flash-overlay').style.display='block';
-                    setTimeout(()=> { 
-                        document.getElementById('flash-overlay').style.display='none'; 
-                        this.index = 0; // Reset on mistake
-                        this.show(); 
-                    }, 1000);
+                    const target = document.querySelector('.active-target');
+                    if (target) target.classList.add('shake');
+                    setTimeout(() => {
+                        document.getElementById('flash-overlay').style.display='none';
+                        if (target) target.classList.remove('shake');
+                        this.index = 0; // Restart
+                        this.showStep();
+                    }, 1200);
                 }
             },
 
-            async finish() {
+            async complete() {
                 await _client.from('scenario_sessions').update({ status: 'completed', mistakes_count: this.mistakes, completed_at: new Date() }).eq('id', this.sessionId);
-                alert("🎉 Well Done! Training complete.\nTotal Mistakes: " + this.mistakes);
+                alert("🎉 Training Complete!\nMistakes made: " + this.mistakes);
                 location.reload();
             }
         };
 
-        // --- 3. INITIAL LOAD ---
+        // --- 3. INITIALIZATION ---
         window.onload = async () => {
+            const status = document.getElementById('conn-status');
+            const list = document.getElementById('scenarios-list');
+
             try {
                 const { data, error } = await _client.from('scenarios').select('*').eq('is_active', true);
                 if (error) throw error;
 
-                const list = document.getElementById('scenarios-list');
-                if (data.length === 0) {
-                    list.innerHTML = "<p>No active scenarios found in database.</p>";
-                    return;
+                status.style.background = "#d1e7dd";
+                status.style.color = "#198754";
+                status.innerText = "✓ Connected to Supabase";
+
+                if (!data || data.length === 0) {
+                    list.innerHTML = "<p style='color:orange'>Database connected, but no scenarios found. Please add one in Admin.</p>";
+                } else {
+                    list.innerHTML = data.map(s => `
+                        <div class="scen-card" onclick="trainer.loadScenario('${s.id}')">
+                            <strong>${s.title}</strong><br>
+                            <small style="color:gray">${s.description || 'No description provided'}</small>
+                        </div>
+                    `).join('');
                 }
-
-                list.innerHTML = data.map(s => `
-                    <div class="scen-item" onclick="trainer.load('${s.id}')">
-                        <strong>${s.title}</strong><br>
-                        <small style="color:#666">${s.description || ''}</small>
-                    </div>
-                `).join('');
-
             } catch (err) {
-                document.getElementById('db-status').innerHTML = `<div class="status-error">Database Error: ${err.message}</div>`;
-                document.getElementById('scenarios-list').innerHTML = "<p>Could not load scenarios.</p>";
+                status.style.background = "#f8d7da";
+                status.style.color = "#dc3545";
+                status.innerText = "❌ Connection Failed: " + err.message;
+                list.innerHTML = "<p>Please check your Supabase URL and Key in the script.</p>";
             }
 
             document.getElementById('hint-btn').onclick = () => {
