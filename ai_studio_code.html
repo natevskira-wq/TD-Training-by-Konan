@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Agent Training Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --bg-color: #f0f2f5; --white: #ffffff; --primary-blue: #0d6efd; --danger-red: #dc3545; --success-green: #198754; --instr-bg: #e7f1ff; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, Arial; background-color: var(--bg-color); padding-bottom: 100px; }
+        #picker-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); z-index: 5000; display: flex; align-items: center; justify-content: center; }
+        .picker-card { background: white; padding: 30px; border-radius: 8px; width: 450px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .scen-item { border: 1px solid #ddd; padding: 10px; margin-top: 10px; border-radius: 4px; cursor: pointer; }
+        .scen-item:hover { border-color: var(--primary-blue); background: #f9f9f9; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 4px; border: 1px solid #dee2e6; margin-bottom: 20px; }
+        .btn { padding: 8px 14px; border-radius: 4px; border: 1px solid #ddd; cursor: pointer; font-weight: 500; }
+        .btn-blue { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+        .badge-green { background: #d1e7dd; color: var(--success-green); }
+        .badge-red { background: #f8d7da; color: var(--danger-red); }
+        .instruction-panel { position: fixed; bottom: 0; width: 100%; background: var(--instr-bg); border-top: 3px solid var(--primary-blue); padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; z-index: 3000; }
+        .active-target { outline: 3px solid var(--primary-blue) !important; box-shadow: 0 0 10px rgba(13,110,253,0.5); }
+        #flash-overlay { position: fixed; top: 0; width: 100%; height: 100%; background: rgba(220,53,69,0.2); display: none; pointer-events: none; z-index: 9999; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 4000; }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 400px; }
+        input { width: 100%; padding: 8px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div id="flash-overlay"></div>
+
+    <div id="picker-screen">
+        <div class="picker-card">
+            <h2>Select Scenario</h2>
+            <input type="text" id="agent-name" placeholder="Your Name">
+            <div id="scenarios-list"></div>
+        </div>
+    </div>
+
+    <div id="main-ui" style="display:none">
+        <header class="card" style="display:flex; justify-content:space-between; align-items:center; border-radius:0;">
+            <div><strong>Booking #20025961</strong> <span class="badge badge-green">Ticketed</span></div>
+            <div><button class="btn btn-blue" id="charge-voice-btn">Charge and Voice</button> <button class="btn" id="send-confirmation-btn">Re-send Confirmation</button></div>
+        </header>
+        <div class="container">
+            <div style="display:flex; gap:20px">
+                <div class="card" style="flex:1">
+                    <label style="font-size:12px; font-weight:bold">External Reference</label>
+                    <input type="text" id="external-ref-input">
+                    <label style="font-size:12px; font-weight:bold">Attachment</label>
+                    <input type="file" id="pdf-upload-input">
+                    <button class="btn btn-blue" style="width:100%" id="save-details-btn">Save Details</button>
+                </div>
+                <div class="card" style="flex:1">
+                    <div style="display:flex; justify-content:space-between"><span>Payment</span><span class="badge badge-green sale-badge">Unlocked</span></div>
+                    <button class="btn btn-sm btn-blue" style="margin-top:10px" onclick="document.getElementById('modal-edit-payment').style.display='flex'">Update Payment</button>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Itinerary</h3>
+                <button class="btn btn-sm btn-blue" onclick="document.getElementById('modal-edit-segment').style.display='flex'">Edit Segment</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-edit-segment">
+        <div class="modal-content">
+            <h3>Edit Segment</h3>
+            <label>Fare Name</label><input type="text" id="fare-name-input">
+            <label>PNR</label><input type="text" id="pnr-input">
+            <button class="btn btn-blue" id="save-segment-btn">Save</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-edit-payment">
+        <div class="modal-content">
+            <h3>Update Payment</h3>
+            <label><input type="checkbox" id="check-item" value="paid"> Ticket Item</label>
+            <button class="btn btn-blue" style="width:100%; margin-top:10px;" id="update-payment-btn">Update</button>
+        </div>
+    </div>
+
+    <div class="instruction-panel">
+        <div>Current Task: <strong id="instruction-text">...</strong></div>
+        <button class="btn btn-sm" style="background:white" id="hint-btn">Hint</button>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://syrhuxxhryctrzjdzexnx.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5cmh1eHhyeWN0cnpqZHpleG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMjYzMjUsImV4cCI6MjA4MDcwMjMyNX0.DP4O-USLYPbjGoTwM2fSc8juzLsABrDbGpQ-7CxSAXQ";
+        const { createClient } = supabase;
+        const _client = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const trainer = {
+            steps: [], index: 0, mistakes: 0, sessionId: null,
+            async load(id) {
+                const name = document.getElementById('agent-name').value || "Agent";
+                const { data: steps } = await _client.from('scenario_steps').select('*').eq('scenario_id', id).order('step_order', {ascending:true});
+                const { data: sess } = await _client.from('scenario_sessions').insert([{ scenario_id: id, agent_name: name }]).select().single();
+                this.steps = steps; this.sessionId = sess.id;
+                document.getElementById('picker-screen').style.display = 'none';
+                document.getElementById('main-ui').style.display = 'block';
+                this.show();
+            },
+            show() {
+                const step = this.steps[this.index];
+                document.getElementById('instruction-text').innerText = step.instruction;
+                document.querySelectorAll('button, input').forEach(el => { el.style.pointerEvents = 'none'; el.style.opacity = '0.4'; el.classList.remove('active-target'); });
+                
+                let target;
+                if(step.step_type === 'fill_external_reference') target = document.getElementById('external-ref-input');
+                if(step.step_type === 'attach_pdf') target = document.getElementById('pdf-upload-input');
+                if(step.step_type === 'click_save_details') target = document.getElementById('save-details-btn');
+                if(step.step_type === 'edit_fare_name') target = document.getElementById('fare-name-input');
+                if(step.step_type === 'edit_pnr') target = document.getElementById('pnr-input');
+                if(step.step_type === 'click_update_payment') target = document.getElementById('update-payment-btn');
+                if(step.step_type === 'click_charge_and_voice') target = document.getElementById('charge-voice-btn');
+
+                if(target) {
+                    target.style.pointerEvents = 'auto'; target.style.opacity = '1'; target.classList.add('active-target');
+                    if(target.id === 'charge-voice-btn') target.onclick = () => { document.querySelector('.sale-badge').className='badge badge-red sale-badge'; document.querySelector('.sale-badge').innerText='Locked'; this.validate('click'); };
+                    else if(target.id === 'update-payment-btn') target.onclick = () => this.validate(document.getElementById('check-item').checked ? 'paid' : '');
+                    else if(target.id === 'fare-name-input' || target.id === 'pnr-input') {
+                        document.getElementById('save-segment-btn').style.pointerEvents='auto'; document.getElementById('save-segment-btn').style.opacity='1';
+                        document.getElementById('save-segment-btn').onclick = () => this.validate(target.value);
+                    }
+                    else target.onchange = target.onclick = () => this.validate(target.value);
+                }
+            },
+            validate(val) {
+                const expected = this.steps[this.index].expected_value;
+                if(this.steps[this.index].step_type.startsWith('click') || (val && val.toString().toLowerCase() === expected.toLowerCase())) {
+                    this.index++;
+                    document.querySelectorAll('.modal-overlay').forEach(m => m.style.display='none');
+                    if(this.index < this.steps.length) this.show(); else this.finish();
+                } else {
+                    this.mistakes++;
+                    document.getElementById('flash-overlay').style.display='block';
+                    setTimeout(()=> { document.getElementById('flash-overlay').style.display='none'; this.index=0; this.show(); }, 1000);
+                }
+            },
+            async finish() {
+                await _client.from('scenario_sessions').update({ status: 'completed', mistakes_count: this.mistakes, completed_at: new Date() }).eq('id', this.sessionId);
+                alert("Complete! Mistakes: " + this.mistakes);
+                location.reload();
+            }
+        };
+
+        window.onload = async () => {
+            const { data } = await _client.from('scenarios').select('*').eq('is_active', true);
+            document.getElementById('scenarios-list').innerHTML = data.map(s => `<div class="scen-item" onclick="trainer.load('${s.id}')"><strong>${s.title}</strong><br><small>${s.description || ''}</small></div>`).join('');
+            document.getElementById('hint-btn').onclick = () => alert(trainer.steps[trainer.index].hint_text);
+        };
+    </script>
+</body>
+</html>

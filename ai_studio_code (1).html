@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin - Scenario Builder</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --bg-color: #f0f2f5; --sidebar-bg: #ffffff; --border-color: #dee2e6; --primary-blue: #0d6efd; --danger-red: #dc3545; --success-green: #198754; --text-main: #212529; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, Arial; background-color: var(--bg-color); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+        aside { width: 380px; background: var(--sidebar-bg); border-right: 1px solid var(--border-color); padding: 20px; overflow-y: auto; }
+        main { flex: 1; padding: 30px; overflow-y: auto; }
+        .card { background: white; padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 25px; }
+        .btn { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-weight: 500; font-size: 14px; }
+        .btn-primary { background-color: var(--primary-blue); color: white; }
+        .btn-danger { background-color: var(--danger-red); color: white; }
+        .btn-sm { padding: 4px 8px; font-size: 11px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; font-size: 14px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border-color); }
+        tr.selected { background-color: #e7f1ff; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 13px; margin-top: 10px; }
+        input, textarea, select { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; }
+        .inline-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f8f9fa; padding: 15px; border: 1px dashed #ccc; }
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+        .toast { padding: 12px 20px; margin-bottom: 10px; border-radius: 4px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div id="toast-container"></div>
+    <aside>
+        <h2 style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            Scenarios <button class="btn btn-primary btn-sm" onclick="resetForm()">+ New</button>
+        </h2>
+        <table id="scenarioTable">
+            <tbody id="scenarioListBody"></tbody>
+        </table>
+    </aside>
+
+    <main>
+        <h2 id="builderTitle" style="margin-bottom:20px;">Scenario Builder</h2>
+        <div class="card">
+            <label>Title</label><input type="text" id="scenTitle">
+            <label>Description</label><textarea id="scenDesc" rows="2"></textarea>
+            <button class="btn btn-primary" style="margin-top:15px;" onclick="handleSaveScenario()">Save Scenario</button>
+        </div>
+
+        <div id="stepsSection" style="display:none;">
+            <div class="card">
+                <h3>Steps</h3>
+                <table>
+                    <thead><tr><th>#</th><th>Type</th><th>Instruction</th><th>Value</th><th>Action</th></tr></thead>
+                    <tbody id="stepsListBody"></tbody>
+                </table>
+                <h4 style="margin-top:20px;">+ Add Step</h4>
+                <div class="inline-form">
+                    <div><label>Type</label>
+                        <select id="stepType">
+                            <option value="fill_external_reference">fill_external_reference</option>
+                            <option value="attach_pdf">attach_pdf</option>
+                            <option value="click_save_details">click_save_details</option>
+                            <option value="edit_fare_name">edit_fare_name</option>
+                            <option value="edit_pnr">edit_pnr</option>
+                            <option value="add_extra_seat">add_extra_seat</option>
+                            <option value="fill_seat_info">fill_seat_info</option>
+                            <option value="click_update_payment">click_update_payment</option>
+                            <option value="click_charge_and_voice">click_charge_and_voice</option>
+                            <option value="send_confirmation">send_confirmation</option>
+                        </select>
+                    </div>
+                    <div><label>Instruction</label><input type="text" id="stepInstruction"></div>
+                    <div><label>Expected Value</label><input type="text" id="stepExpected"></div>
+                    <div><label>Hint</label><input type="text" id="stepHint"></div>
+                    <button class="btn btn-primary" style="grid-column: span 2" onclick="handleAddStep()">Add Step</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const SUPABASE_URL = "https://syrhuxxhryctrzjdzexnx.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5cmh1eHhyeWN0cnpqZHpleG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMjYzMjUsImV4cCI6MjA4MDcwMjMyNX0.DP4O-USLYPbjGoTwM2fSc8juzLsABrDbGpQ-7CxSAXQ";
+        const { createClient } = supabase;
+        const _client = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let currentScenarioId = null;
+
+        async function loadScenarios() {
+            const { data } = await _client.from('scenarios').select('*').eq('is_active', true).order('created_at', {ascending: false});
+            const container = document.getElementById('scenarioListBody');
+            container.innerHTML = data.map(s => `
+                <tr onclick="selectScenario('${s.id}', '${s.title}')" class="${currentScenarioId === s.id ? 'selected' : ''}">
+                    <td><strong>${s.title}</strong><br><small>${s.description || ''}</small></td>
+                    <td><button class="btn btn-sm" style="background:#eee" onclick="event.stopPropagation(); window.open('training.html?scenarioId=${s.id}', '_blank')">Preview</button></td>
+                </tr>`).join('');
+        }
+
+        async function selectScenario(id, title) {
+            currentScenarioId = id;
+            document.getElementById('builderTitle').innerText = "Editing: " + title;
+            document.getElementById('stepsSection').style.display = 'block';
+            loadScenarios();
+            loadSteps();
+        }
+
+        async function loadSteps() {
+            const { data } = await _client.from('scenario_steps').select('*').eq('scenario_id', currentScenarioId).order('step_order', {ascending: true});
+            document.getElementById('stepsListBody').innerHTML = data.map(s => `
+                <tr><td>${s.step_order}</td><td>${s.step_type}</td><td>${s.instruction}</td><td>${s.expected_value}</td><td><button class="btn btn-danger btn-sm">Delete</button></td></tr>`).join('');
+        }
+
+        async function handleSaveScenario() {
+            const title = document.getElementById('scenTitle').value;
+            const description = document.getElementById('scenDesc').value;
+            const { data } = await _client.from('scenarios').insert([{ title, description }]).select().single();
+            showToast("Scenario Saved!");
+            selectScenario(data.id, data.title);
+        }
+
+        async function handleAddStep() {
+            const step_order = document.getElementById('stepsListBody').children.length + 1;
+            const step_type = document.getElementById('stepType').value;
+            const instruction = document.getElementById('stepInstruction').value;
+            const expected_value = document.getElementById('stepExpected').value;
+            const hint_text = document.getElementById('stepHint').value;
+            await _client.from('scenario_steps').insert([{ scenario_id: currentScenarioId, step_order, step_type, instruction, expected_value, hint_text }]);
+            showToast("Step Added!");
+            loadSteps();
+        }
+
+        function resetForm() { currentScenarioId = null; document.getElementById('stepsSection').style.display='none'; document.getElementById('scenTitle').value=''; document.getElementById('scenDesc').value=''; loadScenarios(); }
+        function showToast(m) { const t = document.createElement('div'); t.className='toast'; t.style.background='#198754'; t.innerText=m; document.getElementById('toast-container').appendChild(t); setTimeout(()=>t.remove(), 3000); }
+        window.onload = loadScenarios;
+    </script>
+</body>
+</html>
